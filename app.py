@@ -166,17 +166,22 @@ skroty = {
 df = pd.DataFrame(produkty)
 
 
-# Funkcja generująca SMS
-def generuj_sms(df_zamowienie):
+# Funkcja generująca SMS z miejscem odbioru
+def generuj_sms(df_zamowienie, miejsce_odbioru, adres_wlasny):
     data = datetime.now().strftime("%d.%m.%Y")
     sms = f"ZAMÓWIENIE {data}\n\n"
+
+    # Dodanie miejsca odbioru
+    if miejsce_odbioru == "Inny adres":
+        sms += f"📌 {adres_wlasny}\n\n"
+    else:
+        sms += f"📌 {miejsce_odbioru}\n\n"
 
     for _, row in df_zamowienie.iterrows():
         nazwa_skrot = skroty.get(row['Produkt'], row['Produkt'][:20])
         ilosc = row['Ilość']
         jednostka = row['Jednostka']
 
-        # Formatowanie ilości (bez .0 dla liczb całkowitych)
         if ilosc == int(ilosc):
             ilosc_str = str(int(ilosc))
         else:
@@ -187,7 +192,6 @@ def generuj_sms(df_zamowienie):
     suma_produkty = df_zamowienie['Wartość'].sum()
     sms += f"\nSuma: {suma_produkty:.2f}zł"
 
-    # Kaucja
     butelki_mleko = df_zamowienie[df_zamowienie['Produkt'] == 'Mleko 1l (butelka szklana)']['Ilość'].sum()
     butelki_serwatka = df_zamowienie[df_zamowienie['Produkt'] == 'Serwatka 1l (butelka szklana)']['Ilość'].sum()
     suma_butelek = butelki_mleko + butelki_serwatka
@@ -200,10 +204,17 @@ def generuj_sms(df_zamowienie):
     return sms
 
 
-# Funkcja generująca długą wersję
-def generuj_wiadomosc_email(df_zamowienie):
+# Funkcja generująca długą wersję z miejscem odbioru
+def generuj_wiadomosc_email(df_zamowienie, miejsce_odbioru, adres_wlasny):
     data = datetime.now().strftime("%d.%m.%Y %H:%M")
     msg = f"ZAMÓWIENIE - {data}\n"
+    msg += "=" * 60 + "\n\n"
+
+    # Dodanie miejsca odbioru
+    if miejsce_odbioru == "Inny adres":
+        msg += f"MIEJSCE DOSTAWY: {adres_wlasny}\n"
+    else:
+        msg += f"MIEJSCE ODBIORU: {miejsce_odbioru}\n"
     msg += "=" * 60 + "\n\n"
 
     for kategoria in df_zamowienie['Kategoria'].unique():
@@ -225,7 +236,6 @@ def generuj_wiadomosc_email(df_zamowienie):
     msg += "=" * 60 + "\n"
     msg += f"SUMA ZA PRODUKTY: {suma_produkty:.2f} zł\n"
 
-    # Kaucja
     butelki_mleko = df_zamowienie[df_zamowienie['Produkt'] == 'Mleko 1l (butelka szklana)']['Ilość'].sum()
     butelki_serwatka = df_zamowienie[df_zamowienie['Produkt'] == 'Serwatka 1l (butelka szklana)']['Ilość'].sum()
     suma_butelek = butelki_mleko + butelki_serwatka
@@ -252,12 +262,47 @@ st.set_page_config(
 # Inicjalizacja session state
 if 'zamowienie' not in st.session_state:
     st.session_state.zamowienie = {}
+if 'miejsce_odbioru' not in st.session_state:
+    st.session_state.miejsce_odbioru = "📌 JELCZ-LASKOWICE"
+if 'adres_wlasny' not in st.session_state:
+    st.session_state.adres_wlasny = ""
 
 # Nagłówek
 st.title("🥬 Formularz Zamówienia - Produkty Ekologiczne")
 st.markdown("---")
 
-# Filtry
+# Sekcja miejsca odbioru/dostawy
+st.markdown("### 📍 Miejsce odbioru / dostawy")
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    miejsce_odbioru = st.selectbox(
+        "Wybierz miejsce odbioru:",
+        [
+            "📌 JELCZ-LASKOWICE",
+            "📌 NADOLICE WIELKIE",
+            "📌 DOBRZYKOWICE",
+            "📌 SIECHNICE",
+            "Inny adres"
+        ],
+        key="select_miejsce"
+    )
+    st.session_state.miejsce_odbioru = miejsce_odbioru
+
+with col2:
+    if miejsce_odbioru == "Inny adres":
+        adres_wlasny = st.text_input(
+            "Podaj adres dostawy (miejscowość, ulica, nr):",
+            placeholder="np. Wrocław, ul. Kwiatowa 15",
+            key="input_adres"
+        )
+        st.session_state.adres_wlasny = adres_wlasny
+    else:
+        st.info(f"Wybrane miejsce odbioru: **{miejsce_odbioru}**")
+
+st.markdown("---")
+
+# Filtry kategorii
 col1, col2 = st.columns([1, 3])
 with col1:
     kategoria = st.selectbox(
@@ -319,85 +364,120 @@ if st.session_state.get('pokazuj_podsumowanie', False):
     zamowienie_aktywne = {k: v for k, v in st.session_state.zamowienie.items() if v > 0}
 
     if zamowienie_aktywne:
-        st.markdown("### 💰 Podsumowanie Zamówienia")
-
-        df_zamowienie = df[df['Produkt'].isin(zamowienie_aktywne.keys())].copy()
-        df_zamowienie['Ilość'] = df_zamowienie['Produkt'].map(zamowienie_aktywne)
-        df_zamowienie['Wartość'] = df_zamowienie['Cena'] * df_zamowienie['Ilość']
-
-        # Wyświetlanie tabeli
-        st.dataframe(
-            df_zamowienie[['Produkt', 'Jednostka', 'Cena', 'Ilość', 'Wartość']],
-            use_container_width=True,
-            hide_index=True
-        )
-
-        # Podsumowanie finansowe
-        suma_produkty = df_zamowienie['Wartość'].sum()
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Suma za produkty", f"{suma_produkty:.2f} zł")
-
-        # Kaucja
-        butelki_mleko = df_zamowienie[df_zamowienie['Produkt'] == 'Mleko 1l (butelka szklana)']['Ilość'].sum()
-        butelki_serwatka = df_zamowienie[df_zamowienie['Produkt'] == 'Serwatka 1l (butelka szklana)']['Ilość'].sum()
-        suma_butelek = butelki_mleko + butelki_serwatka
-
-        if suma_butelek > 0:
-            kaucja = suma_butelek * 3.5
-            with col2:
-                st.metric("Kaucja za butelki", f"{kaucja:.2f} zł",
-                          help=f"{int(suma_butelek)} butelek × 3.50 zł")
-
-            st.success(f"### 💵 DO ZAPŁATY RAZEM: {suma_produkty + kaucja:.2f} zł")
+        # Walidacja miejsca odbioru
+        if st.session_state.miejsce_odbioru == "Inny adres" and not st.session_state.adres_wlasny:
+            st.error("⚠️ Proszę podać adres dostawy!")
         else:
-            st.success(f"### 💵 DO ZAPŁATY RAZEM: {suma_produkty:.2f} zł")
+            st.markdown("### 💰 Podsumowanie Zamówienia")
 
-        st.markdown("---")
-        st.markdown("### 📤 Wyślij zamówienie")
+            df_zamowienie = df[df['Produkt'].isin(zamowienie_aktywne.keys())].copy()
+            df_zamowienie['Ilość'] = df_zamowienie['Produkt'].map(zamowienie_aktywne)
+            df_zamowienie['Wartość'] = df_zamowienie['Cena'] * df_zamowienie['Ilość']
 
-        # Generowanie wiadomości
-        sms_text = generuj_sms(df_zamowienie)
-        email_text = generuj_wiadomosc_email(df_zamowienie)
+            # Wyświetlenie miejsca odbioru
+            if st.session_state.miejsce_odbioru == "Inny adres":
+                st.info(f"📍 **Miejsce dostawy:** {st.session_state.adres_wlasny}")
+            else:
+                st.info(f"📍 **Miejsce odbioru:** {st.session_state.miejsce_odbioru}")
 
-        # Trzy kolumny dla różnych opcji
-        col1, col2, col3 = st.columns(3)
+            # Wyświetlanie tabeli
+            st.dataframe(
+                df_zamowienie[['Produkt', 'Jednostka', 'Cena', 'Ilość', 'Wartość']],
+                use_container_width=True,
+                hide_index=True
+            )
 
-        with col1:
-            st.markdown("#### 📱 SMS (krótka wersja)")
-            st.text_area("Skopiuj i wyślij SMS:", sms_text, height=250, key="sms")
-            if st.button("📋 Skopiuj SMS", use_container_width=True):
-                st.write("Skopiuj tekst powyżej i wyślij SMS!")
+            # Podsumowanie finansowe
+            suma_produkty = df_zamowienie['Wartość'].sum()
 
-        with col2:
-            st.markdown("#### 📧 Email/WhatsApp (pełna wersja)")
-            st.text_area("Skopiuj i wyślij:", email_text, height=250, key="email")
-            if st.button("📋 Skopiuj wiadomość", use_container_width=True):
-                st.write("Skopiuj tekst powyżej!")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Suma za produkty", f"{suma_produkty:.2f} zł")
 
-        with col3:
-            st.markdown("#### 💾 Plik CSV")
+            # Kaucja
+            butelki_mleko = df_zamowienie[df_zamowienie['Produkt'] == 'Mleko 1l (butelka szklana)']['Ilość'].sum()
+            butelki_serwatka = df_zamowienie[df_zamowienie['Produkt'] == 'Serwatka 1l (butelka szklana)']['Ilość'].sum()
+            suma_butelek = butelki_mleko + butelki_serwatka
+
+            if suma_butelek > 0:
+                kaucja = suma_butelek * 3.5
+                with col2:
+                    st.metric("Kaucja za butelki", f"{kaucja:.2f} zł",
+                              help=f"{int(suma_butelek)} butelek × 3.50 zł")
+
+                st.success(f"### 💵 DO ZAPŁATY RAZEM: {suma_produkty + kaucja:.2f} zł")
+            else:
+                st.success(f"### 💵 DO ZAPŁATY RAZEM: {suma_produkty:.2f} zł")
+
+            st.markdown("---")
+            st.markdown("### 📤 Wyślij zamówienie")
+
+            # Generowanie wiadomości
+            sms_text = generuj_sms(df_zamowienie, st.session_state.miejsce_odbioru, st.session_state.adres_wlasny)
+            email_text = generuj_wiadomosc_email(df_zamowienie, st.session_state.miejsce_odbioru,
+                                                 st.session_state.adres_wlasny)
+
+            # Dwie kolumny
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("#### 📱 SMS / WhatsApp (krótka wersja)")
+                st.info("👇 **Zaznacz tekst, kliknij prawym i wybierz 'Kopiuj'**")
+
+                st.text_area(
+                    label="Treść SMS:",
+                    value=sms_text,
+                    height=250,
+                    key="sms_display",
+                    help="Zaznacz tekst i skopiuj (Ctrl+C lub długie przytrzymanie na telefonie)"
+                )
+
+                st.download_button(
+                    label="📥 Pobierz SMS (TXT)",
+                    data=sms_text,
+                    file_name=f"zamowienie_sms_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+            with col2:
+                st.markdown("#### 📧 Email (pełna wersja)")
+                st.info("👇 **Zaznacz tekst, kliknij prawym i wybierz 'Kopiuj'**")
+
+                st.text_area(
+                    label="Treść Email:",
+                    value=email_text,
+                    height=250,
+                    key="email_display",
+                    help="Zaznacz tekst i skopiuj (Ctrl+C lub długie przytrzymanie na telefonie)"
+                )
+
+                st.download_button(
+                    label="📥 Pobierz Email (TXT)",
+                    data=email_text,
+                    file_name=f"zamowienie_email_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+            st.markdown("---")
+
+            # CSV na dole
+            st.markdown("#### 💾 Pobierz jako arkusz kalkulacyjny")
             csv = df_zamowienie[['Kategoria', 'Produkt', 'Jednostka', 'Cena', 'Ilość', 'Wartość']].to_csv(index=False,
                                                                                                           encoding='utf-8-sig')
             st.download_button(
-                label="📥 Pobierz CSV",
+                label="📊 Pobierz CSV (Excel)",
                 data=csv,
                 file_name=f"zamowienie_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",
-                use_container_width=True
+                use_container_width=False
             )
 
-            # Opcja pobrania wiadomości tekstowej
-            st.download_button(
-                label="📥 Pobierz TXT",
-                data=email_text,
-                file_name=f"zamowienie_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
-
-            st.info("💡 Pobierz plik lub skopiuj tekst z lewej strony")
+            st.success(
+                "💡 **Wskazówka na telefonie:** Przytrzymaj palec na tekście → Zaznacz wszystko → Kopiuj → Wklej w SMS/WhatsApp")
 
     else:
         st.warning("⚠️ Brak produktów w zamówieniu!")
