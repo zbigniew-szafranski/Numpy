@@ -283,6 +283,8 @@ with col1:
             "📌 NADOLICE WIELKIE",
             "📌 DOBRZYKOWICE",
             "📌 SIECHNICE",
+            "📌 WROCŁAW",
+            "📌 OLEŚNICA",
             "Inny adres"
         ],
         key="select_miejsce"
