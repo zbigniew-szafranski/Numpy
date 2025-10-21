@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 from datetime import datetime
+import base64
 
 # Pełna baza produktów z oferty
 produkty = {
@@ -176,7 +177,6 @@ def generuj_sms(df_zamowienie):
         ilosc = row['Ilość']
         jednostka = row['Jednostka']
 
-        # Formatowanie ilości (bez .0 dla liczb całkowitych)
         if ilosc == int(ilosc):
             ilosc_str = str(int(ilosc))
         else:
@@ -187,7 +187,6 @@ def generuj_sms(df_zamowienie):
     suma_produkty = df_zamowienie['Wartość'].sum()
     sms += f"\nSuma: {suma_produkty:.2f}zł"
 
-    # Kaucja
     butelki_mleko = df_zamowienie[df_zamowienie['Produkt'] == 'Mleko 1l (butelka szklana)']['Ilość'].sum()
     butelki_serwatka = df_zamowienie[df_zamowienie['Produkt'] == 'Serwatka 1l (butelka szklana)']['Ilość'].sum()
     suma_butelek = butelki_mleko + butelki_serwatka
@@ -225,7 +224,6 @@ def generuj_wiadomosc_email(df_zamowienie):
     msg += "=" * 60 + "\n"
     msg += f"SUMA ZA PRODUKTY: {suma_produkty:.2f} zł\n"
 
-    # Kaucja
     butelki_mleko = df_zamowienie[df_zamowienie['Produkt'] == 'Mleko 1l (butelka szklana)']['Ilość'].sum()
     butelki_serwatka = df_zamowienie[df_zamowienie['Produkt'] == 'Serwatka 1l (butelka szklana)']['Ilość'].sum()
     suma_butelek = butelki_mleko + butelki_serwatka
@@ -240,6 +238,62 @@ def generuj_wiadomosc_email(df_zamowienie):
     msg += "=" * 60
 
     return msg
+
+
+# Funkcja tworząca przycisk kopiowania
+def create_copy_button(text, button_text, key):
+    """Tworzy przycisk i pole tekstowe z możliwością kopiowania"""
+    st.code(text, language=None)
+
+    # HTML/JS dla kopiowania - działa na większości urządzeń
+    copy_html = f"""
+    <script>
+    function copyToClipboard{key}() {{
+        const text = `{text}`;
+
+        // Próba 1: Nowoczesne API
+        if (navigator.clipboard && navigator.clipboard.writeText) {{
+            navigator.clipboard.writeText(text).then(function() {{
+                alert('✅ Skopiowano do schowka!');
+            }}).catch(function() {{
+                // Próba 2: Stara metoda
+                fallbackCopy{key}(text);
+            }});
+        }} else {{
+            // Próba 2: Stara metoda
+            fallbackCopy{key}(text);
+        }}
+    }}
+
+    function fallbackCopy{key}(text) {{
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {{
+            document.execCommand('copy');
+            alert('✅ Skopiowano do schowka!');
+        }} catch (err) {{
+            alert('❌ Nie udało się skopiować. Zaznacz i skopiuj ręcznie (długie przytrzymanie na telefonie).');
+        }}
+        document.body.removeChild(textArea);
+    }}
+    </script>
+    <button onclick="copyToClipboard{key}()" style="
+        background-color: #FF4B4B;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        width: 100%;
+        margin-top: 10px;
+    ">{button_text}</button>
+    """
+    st.markdown(copy_html, unsafe_allow_html=True)
 
 
 # Konfiguracja strony
@@ -361,43 +415,55 @@ if st.session_state.get('pokazuj_podsumowanie', False):
         sms_text = generuj_sms(df_zamowienie)
         email_text = generuj_wiadomosc_email(df_zamowienie)
 
-        # Trzy kolumny dla różnych opcji
+        # Dwie kolumny
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### 📱 SMS / WhatsApp (krótka wersja)")
+            st.info("👇 **Kliknij przycisk poniżej, aby skopiować**")
+            create_copy_button(sms_text, "📋 Skopiuj SMS", "sms")
+
+        with col2:
+            st.markdown("#### 📧 Email (pełna wersja)")
+            st.info("👇 **Kliknij przycisk poniżej, aby skopiować**")
+            create_copy_button(email_text, "📋 Skopiuj Email", "email")
+
+        st.markdown("---")
+
+        # Opcje pobierania
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.markdown("#### 📱 SMS (krótka wersja)")
-            st.text_area("Skopiuj i wyślij SMS:", sms_text, height=250, key="sms")
-            if st.button("📋 Skopiuj SMS", use_container_width=True):
-                st.write("Skopiuj tekst powyżej i wyślij SMS!")
-
-        with col2:
-            st.markdown("#### 📧 Email/WhatsApp (pełna wersja)")
-            st.text_area("Skopiuj i wyślij:", email_text, height=250, key="email")
-            if st.button("📋 Skopiuj wiadomość", use_container_width=True):
-                st.write("Skopiuj tekst powyżej!")
-
-        with col3:
-            st.markdown("#### 💾 Plik CSV")
             csv = df_zamowienie[['Kategoria', 'Produkt', 'Jednostka', 'Cena', 'Ilość', 'Wartość']].to_csv(index=False,
                                                                                                           encoding='utf-8-sig')
             st.download_button(
-                label="📥 Pobierz CSV",
+                label="💾 Pobierz CSV",
                 data=csv,
                 file_name=f"zamowienie_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
 
-            # Opcja pobrania wiadomości tekstowej
+        with col2:
             st.download_button(
-                label="📥 Pobierz TXT",
-                data=email_text,
-                file_name=f"zamowienie_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                label="💾 Pobierz SMS (TXT)",
+                data=sms_text,
+                file_name=f"zamowienie_sms_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
                 mime="text/plain",
                 use_container_width=True
             )
 
-            st.info("💡 Pobierz plik lub skopiuj tekst z lewej strony")
+        with col3:
+            st.download_button(
+                label="💾 Pobierz Email (TXT)",
+                data=email_text,
+                file_name=f"zamowienie_email_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+
+        st.info(
+            "💡 **Wskazówka:** Na telefonie przytrzymaj tekst powyżej, aby skopiować ręcznie, lub kliknij czerwony przycisk.")
 
     else:
         st.warning("⚠️ Brak produktów w zamówieniu!")
