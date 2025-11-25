@@ -190,7 +190,7 @@ def generuj_sms(df_zamowienie, miejsce_odbioru, adres_wlasny):
         sms += f"• {nazwa_skrot}: {ilosc_str}{jednostka}\n"
 
     suma_produkty = df_zamowienie['Wartość'].sum()
-    sms += f"\nSuma: {suma_produkty:.2f}zł"
+    sms += f"\nSuma: {suma_produkty:.2f} zł"
 
     butelki_mleko = df_zamowienie[df_zamowienie['Produkt'] == 'Mleko 1l (butelka szklana)']['Ilość'].sum()
     butelki_serwatka = df_zamowienie[df_zamowienie['Produkt'] == 'Serwatka 1l (butelka szklana)']['Ilość'].sum()
