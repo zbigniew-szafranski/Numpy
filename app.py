@@ -199,7 +199,7 @@ def generuj_sms(df_zamowienie, miejsce_odbioru, adres_wlasny):
     if suma_butelek > 0:
         kaucja = suma_butelek * 3.5
         sms += f"\nKaucja: {kaucja:.2f}zł ({int(suma_butelek)}but.)"
-        sms += f"\nRAZEM: {suma_produkty + kaucja:.2f}zł"
+        sms += f"\nRAZEM: {suma_produkty + kaucja:.2f} zł"
 
     return sms
 
